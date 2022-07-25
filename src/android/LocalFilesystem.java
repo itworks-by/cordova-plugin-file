@@ -18,33 +18,30 @@
  */
 package org.apache.cordova.file;
 
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.RandomAccessFile;
-import java.nio.channels.FileChannel;
+import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Environment;
+import android.util.Base64;
 
 import org.apache.cordova.CordovaPreferences;
 import org.apache.cordova.CordovaResourceApi;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import android.os.Build;
-import android.os.Environment;
-import android.util.Base64;
-import android.net.Uri;
-import android.content.Context;
-import android.content.Intent;
-
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.channels.FileChannel;
 import java.nio.charset.Charset;
 
 public class LocalFilesystem extends Filesystem {
     private final Context context;
+    private final static String START_PATH = "/storage/emulated/0";
 
     public LocalFilesystem(String name, Context context, CordovaResourceApi resourceApi, File fsRoot, CordovaPreferences preferences) {
         super(Uri.fromFile(fsRoot).buildUpon().appendEncodedPath("").build(), name, resourceApi, preferences);
@@ -113,7 +110,6 @@ public class LocalFilesystem extends Filesystem {
 			String path, JSONObject options, boolean directory) throws FileExistsException, IOException, TypeMismatchException, EncodingException, JSONException {
         boolean create = false;
         boolean exclusive = false;
-
         if (options != null) {
             create = options.optBoolean("create");
             if (create) {
@@ -138,7 +134,16 @@ public class LocalFilesystem extends Filesystem {
         	requestedURL = localUrlforFullPath(normalizePath(inputURL.path + "/" + path));
         }
 
-        File fp = new File(this.filesystemPathForURL(requestedURL));
+        File fp;
+        if(directory) {
+          fp = context.getApplicationContext().getExternalFilesDir(this.filesystemPathForURL(requestedURL));
+        } else {
+          String[] pathParts = path.split("/");
+          String filename = pathParts[pathParts.length-1];
+          String filePath = context.getApplicationContext().getExternalFilesDir(path.replace("/" + filename, "")).getAbsolutePath();
+
+          fp = new File(filePath + "/" + filename);
+        }
 
         if (create) {
             if (exclusive && fp.exists()) {
@@ -175,7 +180,7 @@ public class LocalFilesystem extends Filesystem {
 	@Override
 	public boolean removeFileAtLocalURL(LocalFilesystemURL inputURL) throws InvalidModificationException {
 
-        File fp = new File(filesystemPathForURL(inputURL));
+        File fp = context.getApplicationContext().getExternalFilesDir(this.filesystemPathForURL(inputURL).replace(START_PATH, ""));
 
         // You can't delete a directory that is not empty
         if (fp.isDirectory() && fp.list().length > 0) {
@@ -187,7 +192,7 @@ public class LocalFilesystem extends Filesystem {
 
     @Override
     public boolean exists(LocalFilesystemURL inputURL) {
-        File fp = new File(filesystemPathForURL(inputURL));
+        File fp = context.getApplicationContext().getExternalFilesDir(this.filesystemPathForURL(inputURL).replace(START_PATH, ""));
         return fp.exists();
     }
 
@@ -198,7 +203,7 @@ public class LocalFilesystem extends Filesystem {
 
     @Override
 	public boolean recursiveRemoveFileAtLocalURL(LocalFilesystemURL inputURL) throws FileExistsException {
-        File directory = new File(filesystemPathForURL(inputURL));
+        File directory = context.getApplicationContext().getExternalFilesDir(this.filesystemPathForURL(inputURL).replace(START_PATH, ""));
     	return removeDirRecursively(directory);
 	}
 
@@ -218,7 +223,7 @@ public class LocalFilesystem extends Filesystem {
 
     @Override
     public LocalFilesystemURL[] listChildren(LocalFilesystemURL inputURL) throws FileNotFoundException {
-        File fp = new File(filesystemPathForURL(inputURL));
+        File fp = context.getApplicationContext().getExternalFilesDir(this.filesystemPathForURL(inputURL).replace(START_PATH, ""));
 
         if (!fp.exists()) {
             // The directory we are listing doesn't exist so we should fail.
@@ -240,7 +245,7 @@ public class LocalFilesystem extends Filesystem {
 
 	@Override
 	public JSONObject getFileMetadataForLocalURL(LocalFilesystemURL inputURL) throws FileNotFoundException {
-        File file = new File(filesystemPathForURL(inputURL));
+        File file = context.getApplicationContext().getExternalFilesDir(this.filesystemPathForURL(inputURL).replace(START_PATH, ""));
 
         if (!file.exists()) {
             throw new FileNotFoundException("File at " + inputURL.uri + " does not exist.");
@@ -393,7 +398,11 @@ public class LocalFilesystem extends Filesystem {
         try
         {
         	byte buff[] = new byte[rawData.length];
-            String absolutePath = filesystemPathForURL(inputURL);
+            String absolutePath = filesystemPathForURL(inputURL).replace(START_PATH, "");
+            String[] pathParts = absolutePath.split("/");
+            String filename = pathParts[pathParts.length-1];
+            String filePath = context.getApplicationContext().getExternalFilesDir(absolutePath.replace("/" + filename, "")).getAbsolutePath();
+            absolutePath = filePath + "/" + filename;
             FileOutputStream out = new FileOutputStream(absolutePath, append);
             try {
             	in.read(buff, 0, buff.length);
@@ -443,7 +452,7 @@ public class LocalFilesystem extends Filesystem {
 
 	@Override
 	public long truncateFileAtURL(LocalFilesystemURL inputURL, long size) throws IOException {
-        File file = new File(filesystemPathForURL(inputURL));
+        File file = context.getApplicationContext().getExternalFilesDir(this.filesystemPathForURL(inputURL).replace(START_PATH, ""));
 
         if (!file.exists()) {
             throw new FileNotFoundException("File at " + inputURL.uri + " does not exist.");
